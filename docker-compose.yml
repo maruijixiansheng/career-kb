@@ -1,0 +1,101 @@
+# ============================================================
+# Career KB — 生产级多容器部署
+#
+# 基础启动:
+#   docker compose -p career-kb up -d
+#
+# 含内网穿透:
+#   docker compose -p career-kb --profile tunnel up -d
+#
+# 架构:
+#   浏览器 → Nginx (:80) → Backend (:8000) → PostgreSQL (:5432)
+#                  ↓
+#   Cloudflare Tunnel (可选) → 外网访问
+# ============================================================
+
+services:
+  # ============================================================
+  # PostgreSQL 数据库
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: career
+      POSTGRES_PASSWORD: career
+      POSTGRES_DB: career_kb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U career -d career_kb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # FastAPI 后端
+  # ============================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./data:/app/data
+      - ./backend/.env:/app/.env:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_TYPE=postgres
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=career
+      - POSTGRES_PASSWORD=career
+      - POSTGRES_DB=career_kb
+      # Docker 中覆盖存储路径 (挂载卷在 /app/data)
+      - PHOTOS_DIR=/app/data/photos
+      - UPLOAD_DIR=/app/data/uploads
+      - CHROMA_PERSIST_DIR=/app/data/chroma
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================
+  # Nginx 反向代理 + 前端静态文件
+  # ============================================================
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================
+  # 内网穿透 (可选, --profile tunnel)
+  # ============================================================
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: http --url=${NGROK_DOMAIN:-} nginx:80
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    restart: unless-stopped
+    depends_on:
+      nginx:
+        condition: service_healthy
+    profiles:
+      - tunnel
+
+volumes:
+  postgres_data:

@@ -1,0 +1,38 @@
+# ===== 敏感文件（绝对不能提交）=====
+# 根目录 Docker 环境变量 (ngrok token)
+.env
+# 所有 .env 文件 (含 backend/.env 中的 API 密钥)
+**/.env
+*.env.local
+*.env.*.local
+
+# ===== 用户数据 =====
+data/
+logs/
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+*.egg
+
+# ===== Node =====
+node_modules/
+frontend/dist/
+
+# ===== 开发文档（不公开）=====
+PROGRESS.md
+DEPLOYMENT.md
+docs/问题追溯与技术方案.md
+cloudflared/
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

@@ -1,0 +1,57 @@
+# Core
+fastapi==0.115.*
+uvicorn[standard]==0.34.*
+pydantic==2.*
+pydantic-settings==2.*
+python-multipart==0.0.*
+
+# Database
+sqlalchemy==2.0.*
+aiosqlite==0.20.*
+alembic==1.14.*
+
+# Vector Store
+chromadb==0.5.*
+
+# Embedding Models — 默认使用 API 模式 (硅基流动)，无需本地模型
+# 如需本地嵌入模式 (EMBEDDING_PROVIDER=local)，取消下面注释:
+#   pip install sentence-transformers==3.* torch --index-url https://download.pytorch.org/whl/cpu
+#   Docker 用户: 构建时加 --build-arg EMBEDDING_MODE=local
+# sentence-transformers==3.*
+
+# Document Parsing
+pymupdf==1.24.*
+python-docx==1.1.*
+
+# LLM — LangChain + LangGraph 框架
+langchain-core>=0.3
+langchain-openai>=0.3
+langchain-community>=0.3
+langchain-huggingface>=0.1
+langchain-text-splitters>=0.3
+langgraph>=0.2
+
+# Chinese NLP
+jieba==0.42.*
+
+# PDF Generation
+weasyprint>=65.0
+Pillow==11.*
+
+# PostgreSQL
+asyncpg==0.29.*
+
+# Template Engine (for PDF HTML templates)
+Jinja2==3.1.*
+
+# Auth
+python-jose[cryptography]==3.3.*
+bcrypt==4.*
+
+# Monitoring
+prometheus-fastapi-instrumentator==7.*
+
+# Testing
+pytest==8.*
+pytest-asyncio==0.24.*
+httpx==0.28.*

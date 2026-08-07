@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  /* ===== 页面设置 ===== */
+  @page {
+    size: A4;
+    margin: 18mm 16mm 20mm 16mm;
+    @bottom-center {
+      content: "— " counter(page) " —";
+      font-size: 8pt;
+      color: #999;
+      font-family: "SimSun", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+    }
+  }
+
+  body {
+    font-family: "SimSun", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.65;
+    color: #222;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* ===== 头部区域 ===== */
+  .header {
+    display: table;
+    width: 100%;
+    margin-bottom: 12pt;
+    border-bottom: 2px solid #2c3e50;
+    padding-bottom: 10pt;
+  }
+  .header-left {
+    display: table-cell;
+    vertical-align: top;
+  }
+  .header-right {
+    display: table-cell;
+    width: 30mm;
+    vertical-align: top;
+    text-align: right;
+  }
+
+  .name {
+    font-size: 20pt;
+    font-weight: bold;
+    color: #2c3e50;
+    margin: 0 0 4pt 0;
+    letter-spacing: 2pt;
+  }
+  .target {
+    font-size: 11pt;
+    color: #555;
+    margin: 0 0 6pt 0;
+  }
+  .contact-line {
+    font-size: 9pt;
+    color: #666;
+    margin: 0;
+    line-height: 1.8;
+  }
+  .contact-line span {
+    margin-right: 12pt;
+  }
+
+  /* 照片 */
+  .photo-box {
+    width: 27mm;
+    height: 36mm;
+    border: 1px solid #ddd;
+    display: inline-block;
+    overflow: hidden;
+  }
+  .photo-box img {
+    width: 27mm;
+    height: 36mm;
+    object-fit: cover;
+  }
+
+  /* ===== 章节标题 ===== */
+  .section-title {
+    font-size: 12pt;
+    font-weight: bold;
+    color: #2c3e50;
+    border-bottom: 1px solid #bbb;
+    padding-bottom: 3pt;
+    margin-top: 14pt;
+    margin-bottom: 6pt;
+    letter-spacing: 1pt;
+  }
+
+  /* ===== 个人总结 ===== */
+  .summary-text {
+    text-indent: 2em;
+    text-align: justify;
+    margin: 0;
+    font-size: 10pt;
+  }
+
+  /* ===== 工作/项目经历条目 ===== */
+  .exp-entry {
+    margin-bottom: 6pt;
+    page-break-inside: avoid;
+  }
+  .exp-header {
+    font-weight: bold;
+    font-size: 10.5pt;
+    margin-bottom: 2pt;
+  }
+  .exp-details {
+    margin: 0;
+    padding-left: 1.5em;
+    list-style-type: none;
+  }
+  .exp-details li {
+    position: relative;
+    padding-left: 0.8em;
+    margin-bottom: 1pt;
+    font-size: 10pt;
+    text-align: justify;
+  }
+  .exp-details li::before {
+    content: "•";
+    position: absolute;
+    left: -0.8em;
+    color: #555;
+  }
+
+  /* ===== 教育背景 ===== */
+  .edu-item {
+    margin-bottom: 2pt;
+    font-size: 10pt;
+  }
+
+  /* ===== 技能 ===== */
+  .skill-item {
+    font-size: 10pt;
+    margin-bottom: 2pt;
+  }
+
+  /* ===== 证书 ===== */
+  .cert-item {
+    font-size: 10pt;
+    margin-bottom: 1pt;
+  }
+
+  /* ===== 无照片提示 ===== */
+  .no-photo {
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- 头部 -->
+<div class="header">
+  <div class="header-left">
+    <div class="name">{{ name }}</div>
+    {% if target_position %}
+    <div class="target">求职意向：{{ target_position }}</div>
+    {% endif %}
+    <div class="contact-line">
+      {% if phone %}<span>📞 {{ phone }}</span>{% endif %}
+      {% if email %}<span>📧 {{ email }}</span>{% endif %}
+      {% if city %}<span>📍 {{ city }}</span>{% endif %}
+      {% if years %}<span>💼 {{ years }}年经验</span>{% endif %}
+    </div>
+  </div>
+  <div class="header-right">
+    {% if photo_path %}
+    <div class="photo-box">
+      <img src="file://{{ photo_path }}" alt="证件照">
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 个人总结 -->
+{% if personal_summary %}
+<div class="section-title">个人总结</div>
+<p class="summary-text">{{ personal_summary }}</p>
+{% endif %}
+
+<!-- 工作经历 -->
+{% if work_experience %}
+<div class="section-title">工作经历</div>
+{% for exp in work_experience %}
+<div class="exp-entry">
+  <div class="exp-header">{{ exp.header }}</div>
+  {% if exp.details %}
+  <ul class="exp-details">
+    {% for detail in exp.details %}
+    <li>{{ detail }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- 项目经历 -->
+{% if project_experience %}
+<div class="section-title">项目经历</div>
+{% for exp in project_experience %}
+<div class="exp-entry">
+  <div class="exp-header">{{ exp.header }}</div>
+  {% if exp.details %}
+  <ul class="exp-details">
+    {% for detail in exp.details %}
+    <li>{{ detail }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- 教育背景 -->
+{% if education %}
+<div class="section-title">教育背景</div>
+{% for edu in education %}
+<div class="edu-item">{{ edu }}</div>
+{% endfor %}
+{% endif %}
+
+<!-- 专业技能 -->
+{% if skills %}
+<div class="section-title">专业技能</div>
+{% for skill in skills %}
+<div class="skill-item">{{ skill }}</div>
+{% endfor %}
+{% endif %}
+
+<!-- 证书与荣誉 -->
+{% if certificates %}
+<div class="section-title">证书与荣誉</div>
+{% for cert in certificates %}
+<div class="cert-item">• {{ cert }}</div>
+{% endfor %}
+{% endif %}
+
+</body>
+</html>
