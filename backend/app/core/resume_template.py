@@ -158,14 +158,34 @@ def generate_resume_html(
     font-size: 13px;
     line-height: 1.6;
     color: #333;
-    background: #fff;
+    background: #e8e8e8;
     width: 210mm;
+    min-height: 297mm;
     margin: 0 auto;
+    padding: 10mm;
+  }}
+
+  @media print {{
+    body {{
+      background: #fff;
+      padding: 0;
+      width: auto;
+      min-height: auto;
+    }}
   }}
   .page {{
     width: 100%;
     display: table;
     table-layout: fixed;
+    background: #fff;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+    min-height: calc(297mm - 20mm);
+  }}
+  @media print {{
+    .page {{
+      box-shadow: none;
+      min-height: auto;
+    }}
   }}
   .sidebar {{
     display: table-cell;
@@ -341,11 +361,15 @@ def generate_resume_html(
     margin-top: 3px;
   }}
 
-  /* ===== 打印样式：浏览器打印时保留颜色背景 ===== */
+  /* ===== 打印样式 ===== */
   @media print {{
     body {{
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+      background: #fff;
+      padding: 0;
+      width: auto;
+      min-height: auto;
     }}
   }}
 </style>
