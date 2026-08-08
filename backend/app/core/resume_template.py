@@ -134,11 +134,11 @@ def generate_resume_html(
     photo_html = f'<img src="data:image/jpeg;base64,{photo_b64}" alt="证件照">' if photo_b64 else '<div class="photo-placeholder">证件照</div>'
     contact_html = ''
     if contact.get("email"):
-        contact_html += f'<div class="contact-item">📧 {contact["email"]}</div>'
+        contact_html += f'<div class="contact-item"><span class="contact-label">邮箱：</span>{contact["email"]}</div>'
     if contact.get("phone"):
-        contact_html += f'<div class="contact-item">📱 {contact["phone"]}</div>'
+        contact_html += f'<div class="contact-item"><span class="contact-label">电话：</span>{contact["phone"]}</div>'
     if contact.get("city"):
-        contact_html += f'<div class="contact-item">📍 {contact["city"]}</div>'
+        contact_html += f'<div class="contact-item"><span class="contact-label">城市：</span>{contact["city"]}</div>'
 
     return f'''<!DOCTYPE html>
 <html lang="zh-CN">
