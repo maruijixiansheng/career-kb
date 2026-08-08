@@ -127,7 +127,7 @@ RELEVANCE_FILTER_SYSTEM = """你是一位严格的招聘匹配专家。你的任
 - 方向不一致就是不一致，不要因为"都用Python"就觉得相关
 - 如果不确定，保守判断为不相关"""
 
-RELEVANCE_FILTER_USER = """判断以下候选经历是否与目标JD方向一致。
+RELEVANCE_FILTER_USER = """判断以下候选项目经历是否与目标JD方向一致。
 
 ## 目标JD
 岗位: {position}
@@ -137,8 +137,13 @@ RELEVANCE_FILTER_USER = """判断以下候选经历是否与目标JD方向一致
 ## 候选经历
 {candidates}
 
-请返回JSON数组，每个候选一个判断结果:
-[{{"id": "chunk_id", "relevant": true, "reason": "技术栈和业务方向匹配"}}]
+## 任务
+对每个候选，判断项目方向是否与JD一致。
+- 相关: 技术栈和业务方向匹配JD
+- 不相关: 属于不同领域方向
+
+返回JSON数组，id用方括号前的数字:
+[{{"id": "0", "relevant": true, "reason": "理由"}}]
 
 只返回JSON数组，不要其他内容。"""
 

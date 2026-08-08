@@ -109,10 +109,17 @@ class LLMClient:
         if text.endswith("```"):
             text = text[:-3]
         text = text.strip()
-        # 尝试提取最外层 JSON 对象
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            text = match.group(0)
+        # 提取最外层 JSON — 先匹配对象（更常见），再匹配数组
+        extracted = None
+        for pattern in [r'\{.*\}', r'\[.*\]']:
+            match = re.search(pattern, text, re.DOTALL)
+            if match:
+                try:
+                    extracted = json.loads(match.group(0))
+                    return extracted
+                except json.JSONDecodeError:
+                    continue  # 匹配到内层嵌套，继续尝试
+        # 如果正则都失败，尝试直接解析
         return json.loads(text)
 
     async def chat_stream(

@@ -610,28 +610,33 @@ class RAGEngine:
         candidates: list[dict],
         top_n: int = 15,
     ) -> list[dict]:
-        """LLM 相关性把关：检索后用 AI 批量判断候选是否与 JD 方向一致
-
-        只判断方向一致性，不依赖语义相似度 —— 解决 BGE-M3
-        无法区分"AI应用开发"和"计算机视觉"的问题。
-        """
+        """LLM 相关性把关：只审项目经历是否与 JD 方向一致，非项目内容始终保留"""
         if not candidates:
             return candidates
 
-        to_check = candidates[:top_n]
-        if len(to_check) < 3:
-            return candidates  # 太少不需要过滤
+        # 分离项目类和非项目类
+        project_chunks = []
+        non_project_chunks = []
+        for c in candidates:
+            st = c.get("metadata", {}).get("section_type", "")
+            et = c.get("metadata", {}).get("entry_type", "")
+            if st in ("project",) or et == "project":
+                project_chunks.append(c)
+            else:
+                non_project_chunks.append(c)
+
+        if len(project_chunks) < 2:
+            return candidates  # 太少了不需要过滤
 
         position = jd_requirements.get("position_title", "未知岗位")
         domain = jd_requirements.get("domain", "")
         dk = jd_requirements.get("domain_keywords", [])
 
-        # 格式化候选摘要
         candidate_lines = []
-        for i, c in enumerate(to_check):
+        for i, c in enumerate(project_chunks):
             title = c.get("metadata", {}).get("title", "") or c.get("metadata", {}).get("section_title", "")
             content_preview = c.get("content", "")[:200].replace("\n", " ")
-            candidate_lines.append(f"[{i}] id={c.get('id','')[:12]} | {title} | {content_preview}")
+            candidate_lines.append(f"[{i}] {title} | {content_preview}")
         candidates_text = "\n".join(candidate_lines)
 
         dk_text = f"领域关键词: {', '.join(dk)}" if dk else ""
@@ -649,27 +654,35 @@ class RAGEngine:
                 model=settings.LLM_MODEL_SIMPLE,
                 temperature=0.0,
             )
-            # 解析过滤结果
-            relevant_ids = set()
+            # 用索引匹配（LLM返回的id是我们给的序号idx的串）
+            keep_indices = set()
             for item in result:
                 if isinstance(item, dict) and item.get("relevant"):
-                    relevant_ids.add(item.get("id", ""))
+                    idx_str = str(item.get("id", ""))
+                    # id可能是 "[0]" 或 "0" 格式
+                    idx_str = idx_str.strip("[]")
+                    try:
+                        keep_indices.add(int(idx_str))
+                    except ValueError:
+                        pass
 
-            if not relevant_ids:
-                # 模型认为全不相关 → 保留原始结果（保守回退）
-                logging.getLogger("career_kb").warning("LLM 相关性把关认为所有候选均不相关，保留原结果")
-                return candidates
+            if not keep_indices:
+                # 所有项目都不相关 → 只保留非项目内容
+                logging.getLogger("career_kb").info(
+                    f"LLM相关性把关: 所有{len(project_chunks)}个项目均不相关，已过滤"
+                )
+                return non_project_chunks
 
-            filtered = [c for c in candidates if c.get("id", "")[:12] in relevant_ids or c in to_check[top_n:]]
-            dropped = len(candidates) - len(filtered)
+            kept_projects = [project_chunks[i] for i in sorted(keep_indices) if i < len(project_chunks)]
+            dropped = len(project_chunks) - len(kept_projects)
             if dropped > 0:
-                logging.getLogger("career_kb").info(f"LLM 相关性把关过滤了 {dropped} 个不相关候选")
-            return filtered or candidates  # 如果全过滤了，保守回退
+                logging.getLogger("career_kb").info(f"LLM相关性把关过滤了 {dropped} 个不相关项目")
+            return non_project_chunks + kept_projects
 
         except Exception as e:
             import logging
-            logging.getLogger("career_kb").warning(f"LLM 相关性把关失败: {e}，跳过过滤")
-            return candidates  # 失败不回退，保留原始结果
+            logging.getLogger("career_kb").warning(f"LLM相关性把关失败: {e}，跳过过滤")
+            return candidates
 
     def _format_chunks(self, chunks: list[dict]) -> str:
         """格式化 chunks 为 LLM 可读文本（含相关性分数，帮助 LLM 区分优先级）"""
