@@ -326,11 +326,19 @@ class HybridRetriever:
         fused.sort(key=lambda x: x.get("weighted_score", 0), reverse=True)
 
         # 5. 内容领域关键词惩罚：跨领域 chunk 降权
-        # 常见跨领域污染词对（检测到则降权 50%）
+        # 常见跨领域污染词对（检测到则降权 80%）
         OFF_DOMAIN_KEYWORDS = [
+            # 机器人/自动驾驶
             "ROS", "ros", "机器人", "SLAM", "Gazebo", "自动驾驶",
-            "OpenCV", "目标检测", "图像分割", "点云", "激光雷达",
-            "嵌入式", "单片机", "STM32", "PCB", "电路",
+            # 计算机视觉
+            "YOLO", "yolo", "YOLOv", "目标检测", "图像分割", "图像分类",
+            "OpenCV", "opencv", "点云", "激光雷达", "相机标定",
+            # 嵌入式/硬件
+            "嵌入式", "单片机", "STM32", "PCB", "电路", "FPGA",
+            # 游戏
+            "Unity", "Unreal", "游戏引擎",
+            # 生物医药
+            "医学影像", "CT影像", "MRI",
         ]
         for doc in fused:
             content = doc.get("content", "")
@@ -342,7 +350,7 @@ class HybridRetriever:
                     for kw in OFF_DOMAIN_KEYWORDS
                 )
                 if not query_match:
-                    doc["weighted_score"] = doc.get("weighted_score", 0) * 0.5
+                    doc["weighted_score"] = doc.get("weighted_score", 0) * 0.2
 
         # 6. 按加权分数重新排序
         fused.sort(key=lambda x: x.get("weighted_score", 0), reverse=True)

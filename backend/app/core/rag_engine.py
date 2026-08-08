@@ -89,13 +89,18 @@ async def _parse_jd_node(state: RAGState) -> dict:
 
 
 async def _generate_queries_node(state: RAGState) -> dict:
-    """节点2: 基于 JD 需求生成多个检索查询 (基于规则)"""
+    """节点2: 基于 JD 需求生成多个检索查询 (基于规则，含岗位领域上下文)"""
     jd_reqs = state.get("jd_requirements") or {}
     core_reqs = jd_reqs.get("core_requirements", [])
     technical_skills = jd_reqs.get("technical_skills", [])
     keywords = jd_reqs.get("keywords", [])
+    position_title = jd_reqs.get("position_title", "") or state.get("jd_title", "")
 
     queries = []
+
+    # 岗位方向作为领域上下文查询（优先级最高）
+    if position_title:
+        queries.append(position_title)
 
     # 技能查询
     skill_names = [s["name"] for s in technical_skills[:5]]
@@ -117,7 +122,7 @@ async def _generate_queries_node(state: RAGState) -> dict:
         queries = keywords[:5] if keywords else [" ".join(skill_names)]
 
     if not queries:
-        queries = [jd_reqs.get("position_title", "")]
+        queries = [position_title or ""]
 
     return {"queries": queries}
 

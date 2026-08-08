@@ -71,8 +71,8 @@ async def create_entry(
         # BM25 索引
         bm25_docs = [{"id": c["id"], "content": c["content"], "metadata": c["metadata"]} for c in chunks]
         retriever.build_bm25_index("skill_library", bm25_docs)
-    except Exception:
-        pass  # 向量化失败不影响存储
+    except Exception as e:
+        import logging; logging.getLogger("career_kb").warning(f"技能库向量化失败 [{title}]: {e}")
 
     await db.commit()
 
