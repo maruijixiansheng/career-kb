@@ -25,6 +25,8 @@ from .prompts import (
     FACT_CHECK_USER,
     RESUME_STRUCTURE_SYSTEM,
     RESUME_STRUCTURE_USER,
+    RELEVANCE_FILTER_SYSTEM,
+    RELEVANCE_FILTER_USER,
 )
 from .embedder import vector_store
 from .retriever import retriever
@@ -89,18 +91,26 @@ async def _parse_jd_node(state: RAGState) -> dict:
 
 
 async def _generate_queries_node(state: RAGState) -> dict:
-    """节点2: 基于 JD 需求生成多个检索查询 (基于规则，含岗位领域上下文)"""
+    """节点2: 基于 JD 需求生成多个检索查询（含动态领域上下文）"""
     jd_reqs = state.get("jd_requirements") or {}
     core_reqs = jd_reqs.get("core_requirements", [])
     technical_skills = jd_reqs.get("technical_skills", [])
     keywords = jd_reqs.get("keywords", [])
     position_title = jd_reqs.get("position_title", "") or state.get("jd_title", "")
+    domain = jd_reqs.get("domain", "")
+    domain_keywords = jd_reqs.get("domain_keywords", [])
 
     queries = []
 
     # 岗位方向作为领域上下文查询（优先级最高）
     if position_title:
         queries.append(position_title)
+
+    # 领域 + 领域关键词作为定向锚点
+    if domain:
+        queries.append(domain)
+    if domain_keywords:
+        queries.append(" ".join(domain_keywords[:5]))
 
     # 技能查询
     skill_names = [s["name"] for s in technical_skills[:5]]
@@ -124,18 +134,21 @@ async def _generate_queries_node(state: RAGState) -> dict:
     if not queries:
         queries = [position_title or ""]
 
-    return {"queries": queries}
+    return {"queries": queries, "jd_requirements": jd_reqs}
 
 
 async def _retrieve_node(state: RAGState) -> dict:
-    """节点3: 混合检索"""
+    """节点3: 混合检索（含动态领域排除）"""
     collection_name = f"resume_{state['resume_id']}"
     queries = state.get("queries", [])
+    jd_reqs = state.get("jd_requirements", {})
+    irrelevant_keywords = jd_reqs.get("irrelevant_domains")
 
     candidates = await retriever.retrieve(
         collection_name=collection_name,
         queries=queries,
         top_k_fusion=settings.RAG_TOP_K_RERANK,
+        irrelevant_keywords=irrelevant_keywords,
     )
 
     return {"retrieved_chunks": candidates}
@@ -286,43 +299,49 @@ class RAGEngine:
         )
 
     async def generate_queries(self, jd_requirements: dict) -> list[str]:
-        """基于 JD 核心需求生成多个检索查询（多样化，覆盖更多角度）"""
+        """基于 JD 核心需求生成多个检索查询（含动态领域上下文，避免跨领域误匹配）"""
         core_reqs = jd_requirements.get("core_requirements", [])
         technical_skills = jd_requirements.get("technical_skills", [])
         keywords = jd_requirements.get("keywords", [])
         position = jd_requirements.get("position_title", "")
+        domain = jd_requirements.get("domain", "")
+        domain_keywords = jd_requirements.get("domain_keywords", [])
 
         queries = []
 
-        # 1. 技能组合查询
+        # 1. 岗位 + 领域锚点查询（引导检索方向）
+        if position:
+            queries.append(position)
+        if domain:
+            queries.append(domain)
+        if domain_keywords:
+            queries.append(" ".join(domain_keywords[:5]))
+
+        # 2. 技能组合查询
         skill_names = [s["name"] for s in technical_skills[:6]]
         if skill_names:
             queries.append(" ".join(skill_names))
 
-        # 2. 每个核心技能独立查询（提高精准度）
+        # 3. 每个核心技能独立查询
         for s in technical_skills[:5]:
             name = s.get("name", "")
             if name and len(name) > 2:
                 queries.append(name)
 
-        # 3. 核心需求组合查询（每个需求一句话）
+        # 4. 核心需求组合查询
         req_names = [r.get("name", "") for r in core_reqs[:4] if r.get("name", "")]
         if req_names:
             queries.append(" ".join(req_names))
 
-        # 4. 关键词
+        # 5. 关键词
         if keywords:
             queries.append(" ".join(keywords[:6]))
-
-        # 5. 岗位名称
-        if position:
-            queries.append(position)
 
         # 确保至少有 2 个查询
         if len(queries) < 2:
             queries = keywords[:5] if keywords else [position or " ".join(skill_names)]
 
-        return queries[:8]  # 最多 8 个查询，避免 API 调用过多
+        return queries[:8]
 
     async def retrieve_chunks(
         self,
@@ -335,9 +354,11 @@ class RAGEngine:
         collection_name = f"resume_{resume_id}"
 
         queries = await self.generate_queries(jd_requirements)
+        irrelevant_keywords = jd_requirements.get("irrelevant_domains")
         candidates = await retriever.retrieve(
             collection_name=collection_name,
             queries=queries,
+            irrelevant_keywords=irrelevant_keywords,
         )
 
         return candidates[:top_k]
@@ -394,6 +415,9 @@ class RAGEngine:
             yield {"type": "progress", "stage": "retrieving", "progress": 20}
             if not retrieved_chunks:
                 retrieved_chunks = await self.retrieve_chunks(resume_id, jd_requirements)
+
+            # Step 1.5: LLM 相关性把关（过滤跨领域误匹配）
+            retrieved_chunks = await self.filter_by_relevance(jd_requirements, retrieved_chunks)
 
             # Step 2: 生成
             yield {"type": "progress", "stage": "generating", "progress": 40}
@@ -505,6 +529,9 @@ class RAGEngine:
         # 2. 检索
         retrieved_chunks = await self.retrieve_chunks(resume_id, jd_requirements)
 
+        # 2.5 LLM 相关性把关
+        retrieved_chunks = await self.filter_by_relevance(jd_requirements, retrieved_chunks)
+
         # 3. 生成
         result = await self.restructure_resume(
             resume_id=resume_id,
@@ -577,6 +604,73 @@ class RAGEngine:
             "fact_check": final_state.get("fact_check_result") or {"is_factual": True, "score": 100, "issues": []},
         }
 
+    async def filter_by_relevance(
+        self,
+        jd_requirements: dict,
+        candidates: list[dict],
+        top_n: int = 15,
+    ) -> list[dict]:
+        """LLM 相关性把关：检索后用 AI 批量判断候选是否与 JD 方向一致
+
+        只判断方向一致性，不依赖语义相似度 —— 解决 BGE-M3
+        无法区分"AI应用开发"和"计算机视觉"的问题。
+        """
+        if not candidates:
+            return candidates
+
+        to_check = candidates[:top_n]
+        if len(to_check) < 3:
+            return candidates  # 太少不需要过滤
+
+        position = jd_requirements.get("position_title", "未知岗位")
+        domain = jd_requirements.get("domain", "")
+        dk = jd_requirements.get("domain_keywords", [])
+
+        # 格式化候选摘要
+        candidate_lines = []
+        for i, c in enumerate(to_check):
+            title = c.get("metadata", {}).get("title", "") or c.get("metadata", {}).get("section_title", "")
+            content_preview = c.get("content", "")[:200].replace("\n", " ")
+            candidate_lines.append(f"[{i}] id={c.get('id','')[:12]} | {title} | {content_preview}")
+        candidates_text = "\n".join(candidate_lines)
+
+        dk_text = f"领域关键词: {', '.join(dk)}" if dk else ""
+
+        try:
+            import logging
+            result = await llm_client.chat_json(
+                system_prompt=RELEVANCE_FILTER_SYSTEM,
+                user_message=RELEVANCE_FILTER_USER.format(
+                    position=position,
+                    domain=domain,
+                    dk_text=dk_text,
+                    candidates=candidates_text,
+                ),
+                model=settings.LLM_MODEL_SIMPLE,
+                temperature=0.0,
+            )
+            # 解析过滤结果
+            relevant_ids = set()
+            for item in result:
+                if isinstance(item, dict) and item.get("relevant"):
+                    relevant_ids.add(item.get("id", ""))
+
+            if not relevant_ids:
+                # 模型认为全不相关 → 保留原始结果（保守回退）
+                logging.getLogger("career_kb").warning("LLM 相关性把关认为所有候选均不相关，保留原结果")
+                return candidates
+
+            filtered = [c for c in candidates if c.get("id", "")[:12] in relevant_ids or c in to_check[top_n:]]
+            dropped = len(candidates) - len(filtered)
+            if dropped > 0:
+                logging.getLogger("career_kb").info(f"LLM 相关性把关过滤了 {dropped} 个不相关候选")
+            return filtered or candidates  # 如果全过滤了，保守回退
+
+        except Exception as e:
+            import logging
+            logging.getLogger("career_kb").warning(f"LLM 相关性把关失败: {e}，跳过过滤")
+            return candidates  # 失败不回退，保留原始结果
+
     def _format_chunks(self, chunks: list[dict]) -> str:
         """格式化 chunks 为 LLM 可读文本（含相关性分数，帮助 LLM 区分优先级）"""
         parts = []
@@ -630,10 +724,12 @@ class RAGEngine:
         if not all_collections:
             return []
 
+        irrelevant_keywords = jd_requirements.get("irrelevant_domains")
         candidates = await retriever.retrieve_multi_collection(
             collection_names=all_collections,
             queries=queries,
             top_k_fusion=top_k,
+            irrelevant_keywords=irrelevant_keywords,
         )
         return candidates[:top_k]
 
@@ -657,6 +753,9 @@ class RAGEngine:
 
         # 2. 当前用户的简历+技能库检索（隔离！）
         all_chunks = await self.retrieve_from_all_sources(jd_requirements, user_id, top_k=50)
+
+        # 2.5 LLM 相关性把关（过滤跨领域误匹配）
+        all_chunks = await self.filter_by_relevance(jd_requirements, all_chunks)
 
         # 如果指定了特定简历，将其 chunks 排在最前面
         if resume_id:

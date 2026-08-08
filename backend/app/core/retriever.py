@@ -267,6 +267,7 @@ class HybridRetriever:
         top_k_sparse: int = 10,
         top_k_fusion: int = 20,
         section_weights: Optional[dict] = None,  # 章节类型加权
+        irrelevant_keywords: Optional[list[str]] = None,  # JD动态排除领域
     ) -> list[dict]:
         """执行混合检索，返回候选 chunks
 
@@ -325,29 +326,26 @@ class HybridRetriever:
         # 按加权分数重排
         fused.sort(key=lambda x: x.get("weighted_score", 0), reverse=True)
 
-        # 5. 内容领域关键词惩罚：跨领域 chunk 降权
-        # 常见跨领域污染词对（检测到则降权 80%）
-        OFF_DOMAIN_KEYWORDS = [
-            # 机器人/自动驾驶
-            "ROS", "ros", "机器人", "SLAM", "Gazebo", "自动驾驶",
-            # 计算机视觉
-            "YOLO", "yolo", "YOLOv", "目标检测", "图像分割", "图像分类",
-            "OpenCV", "opencv", "点云", "激光雷达", "相机标定",
-            # 嵌入式/硬件
-            "嵌入式", "单片机", "STM32", "PCB", "电路", "FPGA",
-            # 游戏
-            "Unity", "Unreal", "游戏引擎",
-            # 生物医药
-            "医学影像", "CT影像", "MRI",
-        ]
+        # 5. 跨领域惩罚：动态排除不相关领域 chunk
+        # 优先使用 JD 解析出的 irrelevant_keywords，没有则回退到静态黑名单
+        if irrelevant_keywords:
+            off_domain_keywords = irrelevant_keywords
+        else:
+            off_domain_keywords = [
+                # 静态回退（当 JD 未提供领域信息时使用）
+                "YOLO", "yolo", "YOLOv", "目标检测", "图像分割", "图像分类",
+                "OpenCV", "opencv", "点云", "激光雷达", "相机标定",
+                "ROS", "ros", "机器人", "SLAM", "Gazebo", "自动驾驶",
+                "嵌入式", "单片机", "STM32", "PCB", "电路", "FPGA",
+                "Unity", "Unreal", "游戏引擎", "医学影像",
+            ]
         for doc in fused:
             content = doc.get("content", "")
-            if any(kw in content for kw in OFF_DOMAIN_KEYWORDS):
-                # 检查是否与查询关键词匹配（如果查询中也包含这些词则不降权）
+            if any(kw in content for kw in off_domain_keywords):
                 query_match = any(
                     kw.lower() in q.lower()
                     for q in queries
-                    for kw in OFF_DOMAIN_KEYWORDS
+                    for kw in off_domain_keywords
                 )
                 if not query_match:
                     doc["weighted_score"] = doc.get("weighted_score", 0) * 0.2
@@ -423,6 +421,7 @@ class HybridRetriever:
         top_k_sparse: int = 10,
         top_k_fusion: int = 20,
         section_weights: Optional[dict] = None,
+        irrelevant_keywords: Optional[list[str]] = None,
     ) -> list[dict]:
         """跨多个 collection 搜索（简历+技能库联合检索）"""
         if section_weights is None:
@@ -445,6 +444,7 @@ class HybridRetriever:
                 top_k_sparse=top_k_sparse,
                 top_k_fusion=top_k_fusion,
                 section_weights=section_weights,
+                irrelevant_keywords=irrelevant_keywords,
             )
             # 标记来源
             for c in candidates:
