@@ -26,7 +26,6 @@ frontend/dist/
 # ===== 开发文档（不公开）=====
 PROGRESS.md
 DEPLOYMENT.md
-docs/问题追溯与技术方案.md
 cloudflared/
 
 # ===== IDE =====
