@@ -146,45 +146,50 @@ def generate_resume_html(
 <meta charset="UTF-8">
 <title>{name} - 个人简历</title>
 <style>
-  /* ===== 页面设置（浏览器预览 + WeasyPrint PDF 通用） ===== */
+  /* ===== A4 纸张定义 ===== */
   @page {{
     size: A4;
     margin: 0;
   }}
+
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 
+  /* ===== 浏览器预览：A4 纸张卡片 ===== */
   body {{
     font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "SimHei", sans-serif;
     font-size: 13px;
     line-height: 1.6;
     color: #333;
     background: #e8e8e8;
+    margin: 0;
+    padding: 24px 0;
+  }}
+
+  .page {{
     width: 210mm;
     min-height: 297mm;
     margin: 0 auto;
-    padding: 10mm;
-  }}
-
-  @media print {{
-    body {{
-      background: #fff;
-      padding: 0;
-      width: auto;
-      min-height: auto;
-    }}
-  }}
-  .page {{
-    width: 100%;
+    background: #fff;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.15);
     display: table;
     table-layout: fixed;
-    background: #fff;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
-    min-height: calc(297mm - 20mm);
   }}
+
+  /* ===== 打印/PDF 模式 ===== */
   @media print {{
-    .page {{
-      box-shadow: none;
+    body {{
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      background: #fff;
+      padding: 0;
+      display: block;
       min-height: auto;
+    }}
+    .page {{
+      width: 100%;
+      min-height: auto;
+      box-shadow: none;
+      margin: 0;
     }}
   }}
   .sidebar {{
@@ -361,17 +366,6 @@ def generate_resume_html(
     margin-top: 3px;
   }}
 
-  /* ===== 打印样式 ===== */
-  @media print {{
-    body {{
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-      background: #fff;
-      padding: 0;
-      width: auto;
-      min-height: auto;
-    }}
-  }}
 </style>
 </head>
 <body>
