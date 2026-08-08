@@ -18,6 +18,11 @@ class UserLoginRequest(BaseModel):
     password: str = Field(..., description="登录密码")
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1, description="当前密码")
+    new_password: str = Field(..., min_length=6, max_length=128, description="新密码")
+
+
 class UserResponse(BaseModel):
     id: str
     email: str

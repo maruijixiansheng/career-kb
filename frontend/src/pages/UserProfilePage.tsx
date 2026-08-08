@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import {
   User, Mail, Phone, MapPin, Briefcase, GraduationCap,
   Building, BookOpen, FileText, Target, DollarSign, Clock,
-  Edit3, Save, X, Loader2,
+  Edit3, Save, X, Loader2, Lock, Eye, EyeOff,
 } from 'lucide-react'
-import { getUserProfile, updateUserProfile } from '../services/api'
+import { getUserProfile, updateUserProfile, changePassword } from '../services/api'
 import type { UserProfile, UserProfileUpdate } from '../types'
 import { EDUCATION_OPTIONS, JOB_STATUS_OPTIONS } from '../types'
 
@@ -15,6 +15,10 @@ export default function UserProfilePage() {
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [form, setForm] = useState<UserProfileUpdate>({})
+  const [showPwdForm, setShowPwdForm] = useState(false)
+  const [pwdForm, setPwdForm] = useState({ old: '', newPwd: '', confirm: '' })
+  const [changingPwd, setChangingPwd] = useState(false)
+  const [showPwd, setShowPwd] = useState(false)
 
   useEffect(() => {
     loadProfile()
@@ -80,6 +84,33 @@ export default function UserProfilePage() {
 
   const updateField = (field: keyof UserProfileUpdate, value: string | number | undefined) => {
     setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleChangePassword = async () => {
+    if (!pwdForm.old || !pwdForm.newPwd || !pwdForm.confirm) {
+      showMsg('error', '请填写所有密码字段')
+      return
+    }
+    if (pwdForm.newPwd.length < 6) {
+      showMsg('error', '新密码至少6位')
+      return
+    }
+    if (pwdForm.newPwd !== pwdForm.confirm) {
+      showMsg('error', '两次输入的新密码不一致')
+      return
+    }
+    setChangingPwd(true)
+    try {
+      await changePassword(pwdForm.old, pwdForm.newPwd)
+      showMsg('success', '密码修改成功')
+      setShowPwdForm(false)
+      setPwdForm({ old: '', newPwd: '', confirm: '' })
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      showMsg('error', detail || '密码修改失败')
+    } finally {
+      setChangingPwd(false)
+    }
   }
 
   if (loading) {
@@ -173,6 +204,79 @@ export default function UserProfilePage() {
                 <Field icon={<DollarSign size={16} />} label="期望薪资" value={fieldValue('expected_salary')} />
                 <Field icon={<Briefcase size={16} />} label="求职状态" value={fieldValue('job_status')} />
               </div>
+            </Section>
+
+            {/* Password Change Section */}
+            <Section title="账号安全">
+              {!showPwdForm ? (
+                <button
+                  onClick={() => setShowPwdForm(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                >
+                  <Lock size={16} />
+                  修改密码
+                </button>
+              ) : (
+                <div className="space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                  <div className="relative">
+                    <label className="block text-xs text-gray-500 mb-1">当前密码</label>
+                    <input
+                      type={showPwd ? 'text' : 'password'}
+                      value={pwdForm.old}
+                      onChange={e => setPwdForm(p => ({ ...p, old: e.target.value }))}
+                      placeholder="请输入当前密码"
+                      className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-400 bg-white"
+                    />
+                  </div>
+                  <div className="relative">
+                    <label className="block text-xs text-gray-500 mb-1">新密码</label>
+                    <input
+                      type={showPwd ? 'text' : 'password'}
+                      value={pwdForm.newPwd}
+                      onChange={e => setPwdForm(p => ({ ...p, newPwd: e.target.value }))}
+                      placeholder="至少6位"
+                      className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-400 bg-white"
+                    />
+                  </div>
+                  <div className="relative">
+                    <label className="block text-xs text-gray-500 mb-1">确认新密码</label>
+                    <input
+                      type={showPwd ? 'text' : 'password'}
+                      value={pwdForm.confirm}
+                      onChange={e => setPwdForm(p => ({ ...p, confirm: e.target.value }))}
+                      placeholder="再次输入新密码"
+                      className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-400 bg-white"
+                    />
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none">
+                    <button
+                      type="button"
+                      onClick={() => setShowPwd(!showPwd)}
+                      className="flex items-center gap-1 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+                      {showPwd ? '隐藏密码' : '显示密码'}
+                    </button>
+                  </label>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={handleChangePassword}
+                      disabled={changingPwd}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50"
+                    >
+                      {changingPwd ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                      {changingPwd ? '修改中...' : '确认修改'}
+                    </button>
+                    <button
+                      onClick={() => { setShowPwdForm(false); setPwdForm({ old: '', newPwd: '', confirm: '' }) }}
+                      className="flex items-center gap-1.5 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                    >
+                      <X size={14} />
+                      取消
+                    </button>
+                  </div>
+                </div>
+              )}
             </Section>
           </div>
         ) : (

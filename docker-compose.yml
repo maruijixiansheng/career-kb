@@ -87,13 +87,19 @@ services:
   # ============================================================
   ngrok:
     image: ngrok/ngrok:latest
-    command: http --url=${NGROK_DOMAIN:-} nginx:80
+    command: http --log stdout --url=${NGROK_DOMAIN:-} nginx:80
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     restart: unless-stopped
     depends_on:
       nginx:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4040/api/tunnels"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     profiles:
       - tunnel
 

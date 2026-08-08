@@ -8,7 +8,7 @@ from ..database import get_db
 from ..models.user import User
 from ..core.auth import create_access_token, get_password_hash, verify_password
 from ..core.deps import get_current_user
-from ..schemas import UserRegisterRequest, UserLoginRequest, TokenResponse, UserResponse
+from ..schemas import UserRegisterRequest, UserLoginRequest, ChangePasswordRequest, TokenResponse, UserResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -92,3 +92,24 @@ async def get_me(current_user: User = Depends(get_current_user)):
         is_active=current_user.is_active,
         created_at=current_user.created_at,
     )
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_password(
+    request: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """修改登录密码"""
+    # 验证当前密码
+    if not verify_password(request.old_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="当前密码错误",
+        )
+
+    # 更新密码
+    current_user.password_hash = get_password_hash(request.new_password)
+    await db.commit()
+
+    return {"message": "密码已更新"}

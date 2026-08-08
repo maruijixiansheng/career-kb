@@ -363,3 +363,9 @@ export async function updateUserProfile(update: UserProfileUpdate): Promise<User
   const { data } = await api.put('/user-profile', update)
   return data
 }
+
+// ===== 修改密码 =====
+
+export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
+  await api.post('/auth/change-password', { old_password: oldPassword, new_password: newPassword })
+}
