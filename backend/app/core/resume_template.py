@@ -169,10 +169,13 @@ def generate_resume_html(
     width: 210mm;
     min-height: 297mm;
     margin: 0 auto;
-    background: #fff;
+    background: #1a3a5c;
     box-shadow: 0 2px 16px rgba(0,0,0,0.15);
-    display: table;
-    table-layout: fixed;
+  }}
+  .page::after {{
+    content: "";
+    display: block;
+    clear: both;
   }}
 
   /* ===== 打印/PDF 模式 ===== */
@@ -187,26 +190,23 @@ def generate_resume_html(
     }}
     .page {{
       width: 100%;
-      min-height: auto;
+      min-height: 297mm;
       box-shadow: none;
       margin: 0;
     }}
   }}
   .sidebar {{
-    display: table-cell;
+    float: left;
   }}
   .main {{
-    display: table-cell;
+    margin-left: 34%;
   }}
 
   /* ===== 左侧栏 ===== */
   .sidebar {{
     width: 34%;
-    background-color: #1a3a5c;
     color: #ffffff;
     padding: 28px 20px 22px;
-    vertical-align: top;
-    page-break-inside: avoid;
     overflow-wrap: break-word;
     word-break: break-all;
   }}
@@ -288,9 +288,9 @@ def generate_resume_html(
 
   /* ===== 右侧主内容 ===== */
   .main {{
+    background: #ffffff;
+    min-height: 297mm;
     padding: 30px 25px 20px 25px;
-    vertical-align: top;
-    page-break-inside: avoid;
   }}
   .main h1 {{
     font-size: 26px;
@@ -316,6 +316,7 @@ def generate_resume_html(
     font-size: 12px;
     color: #555;
     line-height: 1.7;
+    page-break-inside: avoid;
   }}
 
   /* ===== 项目卡片 ===== */
