@@ -96,6 +96,7 @@ def generate_resume_html(
     content: str,
     photo_path: Optional[str] = None,
     structured_data: Optional[dict] = None,
+    scale: float = 1.0,
 ) -> str:
     """生成含证件照的专业简历HTML
 
@@ -103,6 +104,7 @@ def generate_resume_html(
         content: 智能重组后的纯文本简历
         photo_path: 证件照文件路径
         structured_data: LLM解析的结构化数据（可选，用于补充信息）
+        scale: 字号缩放比例（1.0 为原始大小，<1.0 用于 PDF 回缩到一页）
 
     Returns:
         完整的HTML文档字符串
@@ -140,7 +142,7 @@ def generate_resume_html(
     if contact.get("city"):
         contact_html += f'<div class="contact-item"><span class="contact-label">城市：</span>{contact["city"]}</div>'
 
-    return f'''<!DOCTYPE html>
+    html = f'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -400,6 +402,33 @@ def generate_resume_html(
 </div>
 </body>
 </html>'''
+
+    if scale != 1.0:
+        html = _scale_html(html, scale)
+
+    return html
+
+
+def _scale_html(html: str, scale: float) -> str:
+    """按比例缩放 font-size 并收紧 line-height（用于 PDF 回缩到一页）。
+
+    只缩放字号与无单位 line-height，不动 A4 尺寸/内边距/照片框。
+    无单位 line-height 会随字号自动缩放，这里额外按同一比例收紧并钳制到 >=1.25，
+    使同样的字号回缩能收回更多垂直空间（比单纯压字号更不易影响可读性）。
+    """
+    def _font(match):
+        return f"font-size: {round(float(match.group(1)) * scale, 2)}px"
+
+    html = re.sub(r'font-size:\s*([0-9.]+)px', _font, html)
+
+    def _line_height(match):
+        value = max(1.25, round(float(match.group(1)) * scale, 2))
+        return f"line-height: {value};"  # 保留末尾分号
+
+    # 只匹配无单位 line-height（如 1.6），跳过带 px 的（如照片占位 128px）
+    html = re.sub(r'line-height:\s*([0-9.]+);', _line_height, html)
+
+    return html
 
 
 def _render_skills(skills_text: str) -> str:
