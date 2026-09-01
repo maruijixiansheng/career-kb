@@ -275,6 +275,14 @@ class HybridRetriever:
         返回格式与迁移前完全相同: [{id, content, metadata, score, source}, ...]
         """
 
+        # 重启后 BM25 索引丢失，按需重建（技能库按用户分 key，简历按 collection）
+        if collection_name == "skill_library":
+            skey = f"skill_library:{user_id}" if user_id else "skill_library"
+            if skey not in self.bm25_indexes:
+                await self._build_skill_library_bm25(user_id)
+        elif collection_name.startswith("resume_") and collection_name not in self.bm25_indexes:
+            await self._build_resume_bm25(collection_name)
+
         # 默认章节权重
         if section_weights is None:
             section_weights = {
@@ -441,11 +449,7 @@ class HybridRetriever:
 
         all_fused = []
         for collection_name in collection_names:
-            # 对 skill_library 自动补建 BM25 索引（重启后丢失，按用户隔离）
-            if collection_name == "skill_library":
-                bm25_key = f"skill_library:{user_id}" if user_id else "skill_library"
-                if bm25_key not in self.bm25_indexes:
-                    await self._build_skill_library_bm25(user_id)
+            # BM25 索引的按需重建统一在 retrieve() 内部处理
             candidates = await self.retrieve(
                 collection_name=collection_name,
                 queries=queries,
@@ -494,6 +498,33 @@ class HybridRetriever:
                     } for e in entries]
                     bm25_key = f"skill_library:{user_id}" if user_id else "skill_library"
                     self.build_bm25_index(bm25_key, docs)
+        except Exception:
+            pass  # BM25 构建失败不影响 Dense 检索
+
+    async def _build_resume_bm25(self, collection_name: str):
+        """从 DB 读取简历 chunk 并按 collection 构建 BM25 索引（重启后按需重建）"""
+        try:
+            resume_id = collection_name.removeprefix("resume_")
+            from ..models.resume import ResumeChunk
+            from ..database import async_session
+            from sqlalchemy import select
+
+            async with async_session() as session:
+                result = await session.execute(
+                    select(ResumeChunk).where(ResumeChunk.resume_id == resume_id)
+                )
+                chunks = result.scalars().all()
+                if chunks:
+                    docs = [{
+                        "id": c.chroma_id,
+                        "content": c.content,
+                        "metadata": {
+                            "section_type": c.section_type,
+                            "section_title": c.section_title or "",
+                            **(c.metadata_json or {}),
+                        },
+                    } for c in chunks]
+                    self.build_bm25_index(collection_name, docs)
         except Exception:
             pass  # BM25 构建失败不影响 Dense 检索
 
