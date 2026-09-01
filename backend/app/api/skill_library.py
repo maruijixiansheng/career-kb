@@ -61,6 +61,7 @@ async def create_entry(
                 "tags": tags or "",
                 "importance": str(importance),
                 "source": "skill_library",
+                "user_id": str(current_user.id),
             },
             "chunk_index": 0,
             "section_type": entry_type,
@@ -68,9 +69,8 @@ async def create_entry(
             "token_count": len(content),
         }]
         vector_store.add_skill_library_entry(chunks)
-        # BM25 索引
-        bm25_docs = [{"id": c["id"], "content": c["content"], "metadata": c["metadata"]} for c in chunks]
-        retriever.build_bm25_index("skill_library", bm25_docs)
+        # 使该用户的 BM25 缓存失效，下次检索从 DB 重建完整索引（含新条目）
+        retriever.bm25_indexes.pop(f"skill_library:{current_user.id}", None)
     except Exception as e:
         import logging; logging.getLogger("career_kb").warning(f"技能库向量化失败 [{title}]: {e}")
 

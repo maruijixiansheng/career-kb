@@ -62,9 +62,8 @@ async def upload_resume(
 
         # 处理简历（包含解析→结构化→分块→向量化）
         resume = await resume_service.upload_and_process(
-            db=db, file_path=temp_path, name=name
+            db=db, file_path=temp_path, name=name, user_id=current_user.id
         )
-        resume.user_id = current_user.id
 
         # 处理证件照（需要 resume.id 作为文件名）
         photo_path = None
@@ -236,8 +235,8 @@ async def save_generated_resume(
             db=db,
             name=name,
             markdown_text=markdown,
+            user_id=current_user.id,
         )
-        resume.user_id = current_user.id
         await db.commit()
         return {
             "status": "saved",

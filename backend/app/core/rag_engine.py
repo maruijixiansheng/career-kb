@@ -723,19 +723,8 @@ class RAGEngine:
             )
             user_resume_ids = [f"resume_{row[0]}" for row in result.fetchall()]
 
-        # ChromeDB 中所有 resume_* 集合（含旧数据孤立的集合，迁移后 ID 可能不匹配）
-        from .embedder import vector_store
-        all_chroma_collections = []
-        try:
-            all_chroma_collections = [
-                c.name for c in vector_store._client.list_collections()
-                if c.name.startswith("resume_")
-            ]
-        except Exception:
-            pass
-
-        # 合并：DB中的 + ChromaDB中孤立的（确保旧数据不丢失）
-        all_collections = list(set(user_resume_ids + all_chroma_collections)) + ["skill_library"]
+        # 只检索当前用户在 DB 中的简历 collection，不做全局扫描（避免跨用户串数据）
+        all_collections = user_resume_ids + ["skill_library"]
 
         if not all_collections:
             return []
@@ -746,6 +735,7 @@ class RAGEngine:
             queries=queries,
             top_k_fusion=top_k,
             irrelevant_keywords=irrelevant_keywords,
+            user_id=user_id,
         )
         return candidates[:top_k]
 

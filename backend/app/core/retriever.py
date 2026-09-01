@@ -268,6 +268,7 @@ class HybridRetriever:
         top_k_fusion: int = 20,
         section_weights: Optional[dict] = None,  # 章节类型加权
         irrelevant_keywords: Optional[list[str]] = None,  # JD动态排除领域
+        user_id: Optional[str] = None,  # 技能库按用户隔离
     ) -> list[dict]:
         """执行混合检索，返回候选 chunks
 
@@ -289,14 +290,19 @@ class HybridRetriever:
         all_dense = []
         all_sparse = []
 
+        # 按用户隔离：dense 用 metadata 过滤（技能库 + 简历都适用），BM25 索引技能库按用户分 key
+        is_skill_lib = collection_name == "skill_library"
+        bm25_key = f"skill_library:{user_id}" if (is_skill_lib and user_id) else collection_name
+        where_filter = {"user_id": user_id} if user_id else None
+
         for query in queries:
             # 1. Dense 检索
-            dense = vector_store.search(collection_name, query, top_k=top_k_dense)
+            dense = vector_store.search(collection_name, query, top_k=top_k_dense, where_filter=where_filter)
             all_dense.extend(dense)
 
             # 2. Sparse 检索 (如果有索引)
-            if collection_name in self.bm25_indexes:
-                sparse = self.bm25_indexes[collection_name].search(query, top_k=top_k_sparse)
+            if bm25_key in self.bm25_indexes:
+                sparse = self.bm25_indexes[bm25_key].search(query, top_k=top_k_sparse)
                 all_sparse.extend(sparse)
 
         # 去除 dense 中的重复 (按 id)
@@ -422,6 +428,7 @@ class HybridRetriever:
         top_k_fusion: int = 20,
         section_weights: Optional[dict] = None,
         irrelevant_keywords: Optional[list[str]] = None,
+        user_id: Optional[str] = None,
     ) -> list[dict]:
         """跨多个 collection 搜索（简历+技能库联合检索）"""
         if section_weights is None:
@@ -434,9 +441,11 @@ class HybridRetriever:
 
         all_fused = []
         for collection_name in collection_names:
-            # 对 skill_library 自动补建 BM25 索引（重启后丢失）
-            if collection_name == "skill_library" and collection_name not in self.bm25_indexes:
-                await self._build_skill_library_bm25()
+            # 对 skill_library 自动补建 BM25 索引（重启后丢失，按用户隔离）
+            if collection_name == "skill_library":
+                bm25_key = f"skill_library:{user_id}" if user_id else "skill_library"
+                if bm25_key not in self.bm25_indexes:
+                    await self._build_skill_library_bm25(user_id)
             candidates = await self.retrieve(
                 collection_name=collection_name,
                 queries=queries,
@@ -445,6 +454,7 @@ class HybridRetriever:
                 top_k_fusion=top_k_fusion,
                 section_weights=section_weights,
                 irrelevant_keywords=irrelevant_keywords,
+                user_id=user_id,
             )
             # 标记来源
             for c in candidates:
@@ -456,17 +466,18 @@ class HybridRetriever:
         all_fused.sort(key=lambda x: x.get("weighted_score", 0), reverse=True)
         return all_fused[:top_k_fusion]
 
-    async def _build_skill_library_bm25(self):
-        """从 ChromaDB 读取技能库数据并构建 BM25 索引"""
+    async def _build_skill_library_bm25(self, user_id: Optional[str] = None):
+        """从 DB 读取技能库数据并按用户构建 BM25 索引"""
         try:
             from ..models.skill_library import SkillLibraryEntry
             from ..database import async_session
             from sqlalchemy import select
 
             async with async_session() as session:
-                result = await session.execute(
-                    select(SkillLibraryEntry).where(SkillLibraryEntry.is_active == True)
-                )
+                stmt = select(SkillLibraryEntry).where(SkillLibraryEntry.is_active == True)
+                if user_id:
+                    stmt = stmt.where(SkillLibraryEntry.user_id == user_id)
+                result = await session.execute(stmt)
                 entries = result.scalars().all()
                 if entries:
                     docs = [{
@@ -478,9 +489,11 @@ class HybridRetriever:
                             "tags": e.tags or "",
                             "source_collection": "skill_library",
                             "section_type": e.entry_type,
+                            "user_id": e.user_id or "",
                         },
                     } for e in entries]
-                    self.build_bm25_index("skill_library", docs)
+                    bm25_key = f"skill_library:{user_id}" if user_id else "skill_library"
+                    self.build_bm25_index(bm25_key, docs)
         except Exception:
             pass  # BM25 构建失败不影响 Dense 检索
 

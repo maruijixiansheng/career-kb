@@ -31,6 +31,7 @@ class ResumeService:
         file_path: str,
         name: str,
         photo_path: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Resume:
         """上传简历并完成全流程处理: 解析 → 结构化 → 分块 → 向量化"""
         # 1. 解析文件
@@ -43,6 +44,7 @@ class ResumeService:
             source_format=parse_result.source_format,
             raw_text=parse_result.raw_text,
             photo_path=photo_path,
+            user_id=user_id,
         )
         db.add(resume)
         await db.flush()  # 获取 ID
@@ -74,6 +76,10 @@ class ResumeService:
         collection_name = f"resume_{resume.id}"
         if chunks:
             try:
+                # 注入 user_id 到 chunk metadata，供检索时按用户隔离
+                if user_id:
+                    for c in chunks:
+                        c.metadata["user_id"] = user_id
                 vector_store.add_chunks(collection_name, chunks)
                 logger.info(f"向量化完成: {len(chunks)} chunks")
             except Exception as e:
@@ -126,6 +132,7 @@ class ResumeService:
         db: AsyncSession,
         name: str,
         markdown_text: str,
+        user_id: Optional[str] = None,
     ) -> Resume:
         """将生成的 Markdown 简历保存为新的简历记录（解析→分块→向量化）"""
         import logging
@@ -137,6 +144,7 @@ class ResumeService:
             source_filename=f"{name}.md",
             source_format="md",
             raw_text=markdown_text,
+            user_id=user_id,
         )
         db.add(resume)
         await db.flush()
@@ -165,6 +173,10 @@ class ResumeService:
         collection_name = f"resume_{resume.id}"
         if chunks:
             try:
+                # 注入 user_id 到 chunk metadata，供检索时按用户隔离
+                if user_id:
+                    for c in chunks:
+                        c.metadata["user_id"] = user_id
                 vector_store.add_chunks(collection_name, chunks)
             except Exception as e:
                 logger.warning(f"向量化失败: {e}")
