@@ -329,8 +329,12 @@ class VectorStore:
 
         texts = [e["content"] for e in entries]
         metadatas = [
-            {k: str(v) if not isinstance(v, (str, int, float, bool)) else v
-             for k, v in e.get("metadata", {}).items()}
+            {
+                **{k: str(v) if not isinstance(v, (str, int, float, bool)) else v
+                   for k, v in e.get("metadata", {}).items()},
+                # 将条目 id 序列化到 metadata，使 dense 检索返回正确 id（与 BM25 侧对齐，供 RRF 融合去重）
+                "id": e["id"],
+            }
             for e in entries
         ]
         ids = [e["id"] for e in entries]
