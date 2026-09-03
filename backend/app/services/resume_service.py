@@ -25,6 +25,148 @@ class ResumeService:
     def __init__(self):
         self.chunker = ResumeChunker()
 
+    @staticmethod
+    def _normalize_title(title: str) -> str:
+        """归一化标题用于去重：只保留字母/数字（含中文），去空格/标点/大小写"""
+        import re
+        return re.sub(r"[\W_]+", "", (title or "").lower())
+
+    @staticmethod
+    def _format_project_content(proj: dict) -> str:
+        """把简历项目字段拼装成技能库 content（忠实原文，不编造）"""
+        lines = []
+        desc = (proj.get("description") or "").strip()
+        role = (proj.get("role") or "").strip()
+        if desc:
+            lines.append(f"简介: {desc}")
+        if role:
+            lines.append(f"角色: {role}")
+        resp = proj.get("responsibilities") or []
+        if resp:
+            lines.append("负责内容:")
+            lines.extend(f"- {r}" for r in resp if r)
+        ach = proj.get("achievements") or []
+        if ach:
+            lines.append("项目成果:")
+            lines.extend(f"- {a}" for a in ach if a)
+        techs = proj.get("technologies_used") or []
+        if techs:
+            lines.append(f"技术栈: {', '.join(techs)}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_work_content(work: dict) -> str:
+        """把简历工作/实习字段拼装成技能库 content（忠实原文，不编造）"""
+        lines = []
+        resp = work.get("responsibilities") or []
+        if resp:
+            lines.append("职责:")
+            lines.extend(f"- {r}" for r in resp if r)
+        ach = work.get("achievements") or []
+        if ach:
+            lines.append("成果:")
+            lines.extend(f"- {a}" for a in ach if a)
+        techs = work.get("technologies_used") or []
+        if techs:
+            lines.append(f"技术栈: {', '.join(techs)}")
+        loc = (work.get("location") or "").strip()
+        if loc:
+            lines.append(f"地点: {loc}")
+        return "\n".join(lines)
+
+    async def _auto_sync_to_skill_library(
+        self, db: AsyncSession, structured_data: dict, user_id: str
+    ) -> int:
+        """上传简历后自动抽取项目/工作/实习写入技能库（纯规则，去重跳过，不覆盖已有条目）
+
+        Returns:
+            新增条目数
+        """
+        import logging
+        logger = logging.getLogger("career-kb")
+        from sqlalchemy import select
+        from ..models.skill_library import SkillLibraryEntry
+
+        # 结构化失败（回退成 raw）或没有内容时直接跳过
+        if not structured_data or "raw" in structured_data:
+            return 0
+
+        # 1. 抽取待写入条目
+        pending = []
+        for proj in structured_data.get("projects") or []:
+            name = (proj.get("name") or "").strip()
+            if not name:
+                continue
+            pending.append({
+                "entry_type": "project",
+                "title": name,
+                "content": self._format_project_content(proj),
+                "tags": ",".join(proj.get("technologies_used") or []),
+                "start_date": proj.get("start_date") or None,
+                "end_date": proj.get("end_date") or None,
+            })
+
+        for work in structured_data.get("work_experience") or []:
+            position = (work.get("position") or "").strip()
+            company = (work.get("company") or "").strip()
+            title = " | ".join(x for x in (company, position) if x)
+            if not title:
+                continue
+            # 实习判断：职位含「实习」或「intern」
+            is_intern = "实习" in position or "intern" in position.lower()
+            pending.append({
+                "entry_type": "internship" if is_intern else "work",
+                "title": title,
+                "content": self._format_work_content(work),
+                "tags": ",".join(work.get("technologies_used") or []),
+                "start_date": work.get("start_date") or None,
+                "end_date": work.get("end_date") or None,
+            })
+
+        if not pending:
+            return 0
+
+        # 2. 读取该用户已有技能库标题（归一化后做去重）
+        existing = set()
+        result = await db.execute(
+            select(SkillLibraryEntry.title).where(SkillLibraryEntry.user_id == user_id)
+        )
+        for (t,) in result.fetchall():
+            existing.add(self._normalize_title(t))
+
+        # 3. 逐个写入（去重跳过，不覆盖手写/已有条目）
+        created = 0
+        for e in pending:
+            norm = self._normalize_title(e["title"])
+            if norm in existing:
+                continue
+            entry = SkillLibraryEntry(user_id=user_id, importance=3, **e)
+            db.add(entry)
+            await db.flush()  # 取 entry.id 供向量化
+            # 向量化 + BM25 失效（与 skill_library.create_entry 一致）
+            vector_store.add_skill_library_entry([{
+                "id": entry.id,
+                "content": f"[{entry.entry_type}] {entry.title}\n{entry.content}\n标签: {entry.tags or ''}",
+                "metadata": {
+                    "entry_type": entry.entry_type,
+                    "title": entry.title,
+                    "tags": entry.tags or "",
+                    "importance": str(entry.importance),
+                    "source": "skill_library",
+                    "user_id": str(user_id),
+                },
+                "chunk_index": 0,
+                "section_type": entry.entry_type,
+                "section_title": entry.title,
+                "token_count": len(entry.content),
+            }])
+            retriever.bm25_indexes.pop(f"skill_library:{user_id}", None)
+            existing.add(norm)
+            created += 1
+            logger.info(f"技能库自动写入: [{entry.entry_type}] {entry.title}")
+
+        return created
+
     async def upload_and_process(
         self,
         db: AsyncSession,
@@ -63,6 +205,15 @@ class ResumeService:
         except Exception as e:
             logger.warning(f"简历结构化解析失败 (使用原始文本继续): {type(e).__name__}: {e}")
             resume.structured_data = {"raw": parse_result.raw_text}
+
+        # 3.5 自动抽取项目/工作/实习写入技能库（去重跳过，失败不阻塞上传）
+        if user_id:
+            try:
+                synced = await self._auto_sync_to_skill_library(db, resume.structured_data, user_id)
+                if synced:
+                    logger.info(f"技能库自动同步 {synced} 条")
+            except Exception as e:
+                logger.warning(f"技能库自动同步失败 (跳过): {type(e).__name__}: {e}")
 
         # 4. 智能分块
         try:
