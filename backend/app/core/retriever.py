@@ -328,41 +328,34 @@ class HybridRetriever:
             fused = dense_unique
 
         # 4. 章节类型加权（含内容推断回退，兼容旧 chunks 缺少 section_type 的问题）
+        #    再叠加技能库「重要度」因子（简历 chunk 无 importance → 中性 1.0）
         for doc in fused:
             section_type = doc.get("metadata", {}).get("section_type", "")
             if not section_type:
                 section_type = self._infer_section_type(doc)
                 doc["metadata"]["section_type"] = section_type  # 回填
             weight = section_weights.get(section_type, 1.0)
+            importance_factor = self._importance_factor(doc.get("metadata", {}))
             current_score = doc.get("rrf_score", doc.get("score", 0))
-            doc["weighted_score"] = current_score * weight
+            doc["weighted_score"] = current_score * weight * importance_factor
 
         # 按加权分数重排
         fused.sort(key=lambda x: x.get("weighted_score", 0), reverse=True)
 
-        # 5. 跨领域惩罚：动态排除不相关领域 chunk
-        # 优先使用 JD 解析出的 irrelevant_keywords，没有则回退到静态黑名单
+        # 5. 跨领域惩罚：仅由 JD 解析出的 irrelevant_keywords 驱动（LLM 动态判断，行业无关）
+        #    已删除静态黑名单 —— 原黑名单编码了单一领域假设，与「适配所有行业」定位冲突；
+        #    真正的跨领域把关由 LLM 相关性过滤（filter_by_relevance）承担，覆盖全行业。
         if irrelevant_keywords:
-            off_domain_keywords = irrelevant_keywords
-        else:
-            off_domain_keywords = [
-                # 静态回退（当 JD 未提供领域信息时使用）
-                "YOLO", "yolo", "YOLOv", "目标检测", "图像分割", "图像分类",
-                "OpenCV", "opencv", "点云", "激光雷达", "相机标定",
-                "ROS", "ros", "机器人", "SLAM", "Gazebo", "自动驾驶",
-                "嵌入式", "单片机", "STM32", "PCB", "电路", "FPGA",
-                "Unity", "Unreal", "游戏引擎", "医学影像",
-            ]
-        for doc in fused:
-            content = doc.get("content", "")
-            if any(kw in content for kw in off_domain_keywords):
-                query_match = any(
-                    kw.lower() in q.lower()
-                    for q in queries
-                    for kw in off_domain_keywords
-                )
-                if not query_match:
-                    doc["weighted_score"] = doc.get("weighted_score", 0) * 0.2
+            for doc in fused:
+                content = doc.get("content", "")
+                if any(kw in content for kw in irrelevant_keywords):
+                    query_match = any(
+                        kw.lower() in q.lower()
+                        for q in queries
+                        for kw in irrelevant_keywords
+                    )
+                    if not query_match:
+                        doc["weighted_score"] = doc.get("weighted_score", 0) * 0.2
 
         # 6. 按加权分数重新排序
         fused.sort(key=lambda x: x.get("weighted_score", 0), reverse=True)
@@ -433,6 +426,24 @@ class HybridRetriever:
 
         return "other"
 
+    @staticmethod
+    def _importance_factor(metadata: dict) -> float:
+        """技能库「重要度」加权因子（importance 1..5 → 0.8..1.2，3 为中性 1.0）
+
+        简历 chunk 无 importance 字段 → 中性 1.0（不影响排序）。
+        仅技能库条目携带 importance（以字符串存于 metadata），据此微调：
+        5 星项目比 1 星项目更容易被写进生成简历。
+        """
+        raw = metadata.get("importance")
+        if raw is None:
+            return 1.0
+        try:
+            importance = float(raw)
+        except (TypeError, ValueError):
+            return 1.0
+        importance = max(1.0, min(5.0, importance))
+        return 0.8 + (importance - 1) * 0.1
+
     async def retrieve_multi_collection(
         self,
         collection_names: list[str],
@@ -497,6 +508,7 @@ class HybridRetriever:
                             "entry_type": e.entry_type,
                             "title": e.title,
                             "tags": e.tags or "",
+                            "importance": str(e.importance),
                             "source_collection": "skill_library",
                             "section_type": e.entry_type,
                             "user_id": e.user_id or "",
