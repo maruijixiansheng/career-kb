@@ -334,6 +334,9 @@ class VectorStore:
                    for k, v in e.get("metadata", {}).items()},
                 # 将条目 id 序列化到 metadata，使 dense 检索返回正确 id（与 BM25 侧对齐，供 RRF 融合去重）
                 "id": e["id"],
+                # 补全 section_type / section_title，避免 dense 检索回退推断成 "other" 丢失章节权重
+                "section_type": e.get("section_type") or e.get("metadata", {}).get("entry_type", "other"),
+                "section_title": e.get("section_title", ""),
             }
             for e in entries
         ]

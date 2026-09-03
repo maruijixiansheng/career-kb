@@ -638,7 +638,7 @@ class RAGEngine:
         candidate_lines = []
         for i, c in enumerate(experience_chunks):
             title = c.get("metadata", {}).get("title", "") or c.get("metadata", {}).get("section_title", "")
-            content_preview = c.get("content", "")[:200].replace("\n", " ")
+            content_preview = c.get("content", "")[:500].replace("\n", " ")
             candidate_lines.append(f"[{i}] {title} | {content_preview}")
         candidates_text = "\n".join(candidate_lines)
 

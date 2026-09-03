@@ -397,6 +397,12 @@ class HybridRetriever:
         if meta_type in ("basic_info", "self_eval", "skills", "certificate"):
             return meta_type
 
+        # 技能库条目直接用 entry_type 标注章节类型（project/skill/internship/certificate 等），
+        # 兼容 Chroma 中缺少 section_type metadata 的旧条目，避免回退推断成 "other" 丢失章节权重
+        entry_type = metadata.get("entry_type", "")
+        if entry_type in ("project", "skill", "internship", "certificate", "work", "education", "self_eval", "basic_info"):
+            return entry_type
+
         # 检查 metadata 中是否有 project_name / company / school 等特征字段
         if metadata.get("project_name"):
             return "project"
