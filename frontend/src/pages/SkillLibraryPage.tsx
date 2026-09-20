@@ -29,20 +29,24 @@ export default function SkillLibraryPage() {
   const [content, setContent] = useState('')
   const [tags, setTags] = useState('')
   const [importance, setImportance] = useState(3)
+  const [submitting, setSubmitting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const list = await listSkillEntries(filter || undefined)
+      const list = await listSkillEntries()
       setEntries(list)
     } catch {
       // ignore
     } finally {
       setLoading(false)
     }
-  }, [filter])
+  }, [])
 
   useEffect(() => { load() }, [load])
+
+  // 本地筛选展示列表；计数始终基于全量 entries，避免筛选后计数归零
+  const filteredEntries = filter ? entries.filter(e => e.entry_type === filter) : entries
 
   const showMsg = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text })
@@ -54,7 +58,10 @@ export default function SkillLibraryPage() {
   }
 
   const handleSubmit = async () => {
-    if (!title.trim() || !content.trim()) return
+    if (submitting) return
+    if (!title.trim()) { showMsg('error', '请填写标题'); return }
+    if (!content.trim()) { showMsg('error', '请填写详细内容'); return }
+    setSubmitting(true)
     try {
       if (editId) {
         await updateSkillEntry(editId, { title: title.trim(), content: content.trim(), tags: tags.trim(), importance })
@@ -67,8 +74,11 @@ export default function SkillLibraryPage() {
         showMsg('success', '已添加')
       }
       resetForm(); setShowForm(false); await load()
-    } catch {
-      showMsg('error', '操作失败')
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail
+      showMsg('error', typeof detail === 'string' ? `操作失败：${detail}` : '操作失败')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -91,13 +101,15 @@ export default function SkillLibraryPage() {
           <BookOpen size={24} />
           技能库
         </h2>
-        <button onClick={() => { resetForm(); setShowForm(!showForm) }}
-          className="flex items-center gap-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">
-          <Plus size={16} /> 添加条目
-        </button>
+        {!showForm && (
+          <button onClick={() => { resetForm(); setShowForm(true) }} type="button"
+            className="flex items-center gap-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">
+            <Plus size={16} /> 添加条目
+          </button>
+        )}
       </div>
 
-      {message && (
+      {message && !showForm && (
         <div className={`mb-4 px-4 py-3 rounded-lg text-sm ${
           message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200'
             : 'bg-red-50 text-red-700 border border-red-200'}`}>
@@ -111,6 +123,13 @@ export default function SkillLibraryPage() {
           <h3 className="text-sm font-semibold text-gray-700 mb-4">
             {editId ? '编辑条目' : '新条目'}
           </h3>
+          {message && (
+            <div className={`mb-4 px-4 py-3 rounded-lg text-sm ${
+              message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200'
+                : 'bg-red-50 text-red-700 border border-red-200'}`}>
+              {message.text}
+            </div>
+          )}
           <div className="grid grid-cols-4 gap-4 mb-4">
             <div>
               <label className="block text-xs text-gray-500 mb-1">类型</label>
@@ -144,11 +163,12 @@ export default function SkillLibraryPage() {
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-vertical" />
           </div>
           <div className="flex gap-2">
-            <button onClick={handleSubmit}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">
-              {editId ? '更新' : '添加'}
+            <button onClick={handleSubmit} type="button" disabled={submitting}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed">
+              {submitting && <Loader2 size={16} className="animate-spin" />}
+              {submitting ? '提交中…' : (editId ? '更新' : '添加')}
             </button>
-            <button onClick={() => { setShowForm(false); resetForm() }}
+            <button onClick={() => { setShowForm(false); resetForm() }} type="button"
               className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600">
               取消
             </button>
@@ -171,7 +191,7 @@ export default function SkillLibraryPage() {
       {/* List */}
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-gray-300" /></div>
-      ) : entries.length === 0 ? (
+      ) : filteredEntries.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
           <BookOpen size={40} className="mx-auto mb-2 opacity-30" />
           <p className="text-sm">技能库为空</p>
@@ -179,7 +199,7 @@ export default function SkillLibraryPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {entries.map(e => (
+          {filteredEntries.map(e => (
             <div key={e.id} className="bg-white rounded-lg border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
