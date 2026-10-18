@@ -74,30 +74,37 @@ class ResumeService:
             lines.append(f"地点: {loc}")
         return "\n".join(lines)
 
-    async def _auto_sync_to_skill_library(
-        self, db: AsyncSession, structured_data: dict, user_id: str
-    ) -> int:
-        """上传简历后自动抽取项目/工作/实习写入技能库（纯规则，去重跳过，不覆盖已有条目）
+    # 技能分类中文名。soft_skills 故意不写入技能库：对检索排序与简历生成价值低，只会稀释结果
+    _SKILL_CATEGORIES = {
+        "programming_languages": "编程语言",
+        "frameworks": "框架与库",
+        "tools": "工具与平台",
+    }
 
-        Returns:
-            新增条目数
+    def _build_pending_entries(self, structured_data: dict) -> list[dict]:
+        """把结构化简历转成待写入技能库的条目（纯规则，便于单测）
+
+        覆盖：项目 / 工作 / 实习 / 硬技能 / 证书获奖。
+        标题归一化后在本批内先去重，跨批（与已有条目）去重在调用方完成。
         """
-        import logging
-        logger = logging.getLogger("career-kb")
-        from sqlalchemy import select
-        from ..models.skill_library import SkillLibraryEntry
-
-        # 结构化失败（回退成 raw）或没有内容时直接跳过
         if not structured_data or "raw" in structured_data:
-            return 0
+            return []
 
-        # 1. 抽取待写入条目
-        pending = []
+        pending: list[dict] = []
+        seen: set[str] = set()
+
+        def add(entry: dict) -> None:
+            norm = self._normalize_title(entry.get("title", ""))
+            if not norm or norm in seen:
+                return
+            seen.add(norm)
+            pending.append(entry)
+
         for proj in structured_data.get("projects") or []:
             name = (proj.get("name") or "").strip()
             if not name:
                 continue
-            pending.append({
+            add({
                 "entry_type": "project",
                 "title": name,
                 "content": self._format_project_content(proj),
@@ -114,7 +121,7 @@ class ResumeService:
                 continue
             # 实习判断：职位含「实习」或「intern」
             is_intern = "实习" in position or "intern" in position.lower()
-            pending.append({
+            add({
                 "entry_type": "internship" if is_intern else "work",
                 "title": title,
                 "content": self._format_work_content(work),
@@ -123,6 +130,54 @@ class ResumeService:
                 "end_date": work.get("end_date") or None,
             })
 
+        # 硬技能：按「单个技术名词」拆条，检索时能直接命中 Python / LangGraph 这类词
+        skills = structured_data.get("skills") or {}
+        if isinstance(skills, dict):
+            for key, label in self._SKILL_CATEGORIES.items():
+                for raw_name in skills.get(key) or []:
+                    name = str(raw_name or "").strip()
+                    if len(name) < 2:
+                        continue
+                    add({
+                        "entry_type": "skill",
+                        "title": name[:300],
+                        "content": f"分类：{label}（来源：简历解析）",
+                        "tags": label,
+                        "start_date": None,
+                        "end_date": None,
+                    })
+
+        # 证书 / 获奖
+        for cert in structured_data.get("certificates") or []:
+            text = str(cert or "").strip()
+            if not text:
+                continue
+            add({
+                "entry_type": "certificate",
+                "title": text[:300],
+                "content": f"证书/获奖：{text}",
+                "tags": "证书",
+                "start_date": None,
+                "end_date": None,
+            })
+
+        return pending
+
+    async def _auto_sync_to_skill_library(
+        self, db: AsyncSession, structured_data: dict, user_id: str
+    ) -> int:
+        """上传简历后自动抽取项目/工作/实习/技能/证书写入技能库（纯规则，去重跳过，不覆盖已有条目）
+
+        Returns:
+            新增条目数
+        """
+        import logging
+        logger = logging.getLogger("career-kb")
+        from sqlalchemy import select
+        from ..models.skill_library import SkillLibraryEntry
+
+        # 结构化失败（回退成 raw）或没有可抽取内容时直接跳过
+        pending = self._build_pending_entries(structured_data)
         if not pending:
             return 0
 

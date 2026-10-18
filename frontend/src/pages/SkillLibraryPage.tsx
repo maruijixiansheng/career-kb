@@ -64,8 +64,13 @@ export default function SkillLibraryPage() {
     setSubmitting(true)
     try {
       if (editId) {
-        await updateSkillEntry(editId, { title: title.trim(), content: content.trim(), tags: tags.trim(), importance })
-        showMsg('success', '已更新')
+        const res = await updateSkillEntry(editId, { title: title.trim(), content: content.trim(), tags: tags.trim(), importance })
+        // 向量同步失败时 DB 已保存但检索仍是旧内容，必须提示用户重试
+        if (res?.vector_synced === false) {
+          showMsg('error', '内容已保存，但向量同步失败，检索可能仍是旧内容，请重新保存一次')
+        } else {
+          showMsg('success', '已更新')
+        }
       } else {
         await createSkillEntry({
           entry_type: entryType, title: title.trim(), content: content.trim(),
@@ -91,7 +96,10 @@ export default function SkillLibraryPage() {
   const handleDelete = async (id: string, title: string) => {
     if (!confirm(`删除 "${title}"？`)) return
     try { await deleteSkillEntry(id); showMsg('success', '已删除'); await load() }
-    catch { showMsg('error', '删除失败') }
+    catch (err: any) {
+      const detail = err?.response?.data?.detail
+      showMsg('error', typeof detail === 'string' ? `删除失败：${detail}` : '删除失败')
+    }
   }
 
   return (

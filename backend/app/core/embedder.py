@@ -345,6 +345,44 @@ class VectorStore:
         chroma.add_texts(texts=texts, metadatas=metadatas, ids=ids)
         return len(entries)
 
+    def get_skill_library_entry_content(self, entry_id: str) -> Optional[str]:
+        """读取技能库某条目当前的向量文本（用于写入后回读校验）"""
+        collection_name = "skill_library"
+        if not entry_id or not self.collection_exists(collection_name):
+            return None
+        try:
+            got = self._get_chroma(collection_name)._collection.get(
+                ids=[entry_id], include=["documents"]
+            )
+            docs = got.get("documents") or []
+            return docs[0] if docs else None
+        except Exception:
+            return None
+
+    def delete_skill_library_entries(self, ids: list[str]) -> int:
+        """按 id 删除技能库向量（条目被删除或内容变更重建时使用）
+
+        与 add_skill_library_entry 成对使用：Chroma 的 add 对已存在的 id 不会覆盖，
+        因此「编辑」必须先删旧向量再写新向量，否则留下的是旧内容。
+
+        Returns:
+            实际提交删除的 id 数量（collection 不存在时返回 0）
+        """
+        ids = [i for i in (ids or []) if i]
+        if not ids:
+            return 0
+
+        collection_name = "skill_library"
+        if not self.collection_exists(collection_name):
+            return 0
+
+        # 优先走 LangChain wrapper（与 add/search 共用同一实例），失败再回退原生 client
+        try:
+            self._get_chroma(collection_name).delete(ids=ids)
+        except Exception:
+            self._client.get_collection(collection_name).delete(ids=ids)
+        return len(ids)
+
     def delete_collection(self, collection_name: str):
         """删除 collection"""
         self._chroma_instances.pop(collection_name, None)

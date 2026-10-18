@@ -335,8 +335,12 @@ export async function listSkillEntries(entry_type?: string): Promise<SkillLibrar
   return data
 }
 
-export async function updateSkillEntry(id: string, params: Record<string, unknown>): Promise<void> {
-  await api.put(`/skill-library/${id}`, null, { params })
+export async function updateSkillEntry(
+  id: string,
+  params: Record<string, unknown>
+): Promise<{ vector_synced?: boolean | null }> {
+  const { data } = await api.put(`/skill-library/${id}`, null, { params })
+  return data
 }
 
 export async function deleteSkillEntry(id: string): Promise<void> {

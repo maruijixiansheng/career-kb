@@ -426,7 +426,8 @@ async def _get_profile_header(db: AsyncSession, user_id: str, jd_title: str = ""
     if edu_parts:
         lines.append("## 教育背景")
         lines.append(" | ".join(edu_parts))
-        if profile.years_of_experience is not None:
+        # 应届生 0 年不写（“工作年限: 0年”写在简历上很减分）
+        if profile.years_of_experience and profile.years_of_experience > 0:
             lines.append(f"工作年限: {profile.years_of_experience}年")
         lines.append("")
 

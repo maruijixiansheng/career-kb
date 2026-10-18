@@ -610,33 +610,42 @@ class RAGEngine:
         candidates: list[dict],
         top_n: int = 15,
     ) -> list[dict]:
-        """LLM 相关性把关：审项目/工作/实习经历是否与 JD 方向一致，基本信息等始终保留"""
+        """LLM 相关性把关：只过滤「项目」，工作/实习经历始终保留
+
+        为什么工作/实习不过滤：
+        - 实习/工作是履历连续性与可信度信息，跨领域也不该整段消失（否则简历会出现"没有工作经历"的空白）；
+        - 真实简历的做法是"弱化描述"，而不是"假装没干过"；
+        - 项目才是可以按 JD 方向取舍的部分（跨领域项目会稀释针对性）。
+        """
         if not candidates:
             return candidates
 
-        # 需要 LLM 判断的类型：项目、工作、实习（都是"经历"类，有跨领域风险）
-        EXPERIENCE_TYPES = ("project", "work", "internship")
+        FILTER_TYPES = ("project",)             # 参与跨领域过滤
+        ALWAYS_KEEP = ("work", "internship")    # 履历类，始终保留
 
-        # 分离经历类和非经历类
-        experience_chunks = []
-        non_experience_chunks = []
+        filterable: list[dict] = []
+        always_keep: list[dict] = []
+        non_experience: list[dict] = []
         for c in candidates:
-            st = c.get("metadata", {}).get("section_type", "")
-            et = c.get("metadata", {}).get("entry_type", "")
-            if st in EXPERIENCE_TYPES or et in EXPERIENCE_TYPES:
-                experience_chunks.append(c)
+            meta = c.get("metadata", {})
+            kind = meta.get("section_type") or meta.get("entry_type") or ""
+            if kind in ALWAYS_KEEP:
+                always_keep.append(c)
+            elif kind in FILTER_TYPES:
+                filterable.append(c)
             else:
-                non_experience_chunks.append(c)
+                non_experience.append(c)
 
-        if len(experience_chunks) < 2:
-            return candidates  # 太少了不需要过滤
+        # 项目太少时不需要过滤，直接原样返回
+        if len(filterable) < 2:
+            return candidates
 
         position = jd_requirements.get("position_title", "未知岗位")
         domain = jd_requirements.get("domain", "")
         dk = jd_requirements.get("domain_keywords", [])
 
         candidate_lines = []
-        for i, c in enumerate(experience_chunks):
+        for i, c in enumerate(filterable):
             title = c.get("metadata", {}).get("title", "") or c.get("metadata", {}).get("section_title", "")
             content_preview = c.get("content", "")[:500].replace("\n", " ")
             candidate_lines.append(f"[{i}] {title} | {content_preview}")
@@ -670,17 +679,17 @@ class RAGEngine:
                         pass
 
             if not keep_indices:
-                # 所有经历都不相关 → 只保留非经历内容
+                # 所有项目都不相关 → 只保留非项目内容（工作/实习仍然保留）
                 logging.getLogger("career_kb").info(
-                    f"LLM相关性把关: 所有{len(experience_chunks)}个经历均不相关，已过滤"
+                    f"LLM相关性把关: {len(filterable)} 个项目均不相关，已过滤"
                 )
-                return non_experience_chunks
+                return non_experience + always_keep
 
-            kept_experiences = [experience_chunks[i] for i in sorted(keep_indices) if i < len(experience_chunks)]
-            dropped = len(experience_chunks) - len(kept_experiences)
+            kept_projects = [filterable[i] for i in sorted(keep_indices) if i < len(filterable)]
+            dropped = len(filterable) - len(kept_projects)
             if dropped > 0:
-                logging.getLogger("career_kb").info(f"LLM相关性把关过滤了 {dropped} 个不相关经历")
-            return non_experience_chunks + kept_experiences
+                logging.getLogger("career_kb").info(f"LLM相关性把关过滤了 {dropped} 个不相关项目")
+            return non_experience + always_keep + kept_projects
 
         except Exception as e:
             import logging

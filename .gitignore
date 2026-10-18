@@ -26,7 +26,14 @@ frontend/dist/
 # ===== 开发文档（不公开）=====
 PROGRESS.md
 DEPLOYMENT.md
+简历素材.md
+docs/开发交接手册.md
+docs/A-B评测结论.md
+docs/评测数据集调研.md
 cloudflared/
+
+# ===== 构建产物 =====
+frontend/tsconfig.tsbuildinfo
 
 # ===== IDE =====
 .idea/
