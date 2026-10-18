@@ -7,7 +7,12 @@
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci --registry=https://registry.npmmirror.com
+# 只加 --registry 不够：package-lock.json 里的 resolved 地址仍指向 registry.npmjs.org，
+# 在境内会长时间卡住。replace-registry-host=always 会把 lockfile 里的 host 一起替换掉。
+RUN npm config set registry https://registry.npmmirror.com \
+ && npm config set replace-registry-host always \
+ && npm config set fetch-retries 3 \
+ && npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
