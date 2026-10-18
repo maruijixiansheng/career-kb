@@ -431,6 +431,12 @@ async def _get_profile_header(db: AsyncSession, user_id: str, jd_title: str = ""
             lines.append(f"工作年限: {profile.years_of_experience}年")
         lines.append("")
 
+    # 专业课程（渲染在简历左侧栏，独立于 LLM 生成内容）
+    if profile.courses and profile.courses.strip():
+        lines.append("## 专业课程")
+        lines.append(profile.courses.strip())
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -462,6 +468,13 @@ def _strip_static_sections(text: str) -> str:
 
     # 移除 ## 教育背景 或 【教育背景】 或 教育背景 章节（含内容）
     for header in [r'##\s*教育背景', r'【教育背景】', r'^教育背景\s*$']:
+        text = re.sub(
+            rf'{header}\s*\n.*?(?=\n(?:##|【|(?:\S+)\s*\n---)|<analysis>|\Z)',
+            '', text, flags=re.DOTALL | re.MULTILINE
+        )
+
+    # 移除专业课程/主修课程章节（由个人信息预填充到左侧栏，避免重复）
+    for header in [r'##\s*(?:专业课程|主修课程)', r'【(?:专业课程|主修课程)】', r'^(?:专业课程|主修课程)\s*$']:
         text = re.sub(
             rf'{header}\s*\n.*?(?=\n(?:##|【|(?:\S+)\s*\n---)|<analysis>|\Z)',
             '', text, flags=re.DOTALL | re.MULTILINE

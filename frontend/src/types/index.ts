@@ -315,6 +315,7 @@ export interface UserProfile {
   education?: string
   school?: string
   major?: string
+  courses?: string
   summary?: string
   expected_role?: string
   expected_salary?: string
@@ -333,6 +334,7 @@ export interface UserProfileUpdate {
   education?: string
   school?: string
   major?: string
+  courses?: string
   summary?: string
   expected_role?: string
   expected_salary?: string

@@ -39,6 +39,9 @@ class UserProfile(Base, UUIDMixin, TimestampMixin):
     major: Mapped[Optional[str]] = mapped_column(
         String(200), nullable=True, comment="专业"
     )
+    courses: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="专业课程（顿号/逗号/换行分隔），渲染在简历左侧栏"
+    )
     summary: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="个人简介"
     )

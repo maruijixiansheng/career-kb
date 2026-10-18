@@ -279,6 +279,23 @@ def generate_resume_html(
     margin: 0;
     padding: 0;
   }}
+  .courses-wrap {{
+    margin: 0;
+    padding: 0;
+  }}
+  .sidebar .course-tag {{
+    display: inline-block;
+    background: rgba(255,255,255,0.12);
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin: 0 4px 5px 0;
+    font-size: 10.5px;
+    color: #ffffff;
+    line-height: 1.5;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-all;
+  }}
   .sidebar .edu-item, .sidebar .cert-item {{
     font-size: 11px;
     margin: 5px 0;
@@ -389,6 +406,7 @@ def generate_resume_html(
     <h2>教育背景</h2>
     {_render_education(sections.get('教育背景', ''))}
   </div>
+  {f'<div class="block"><h2>专业课程</h2><div class="courses-wrap">{_render_courses(sections.get("专业课程", ""))}</div></div>' if sections.get('专业课程') else ''}
   {f'<div class="block"><h2>证书荣誉</h2>{_render_certs(sections.get("证书与荣誉", ""))}</div>' if sections.get('证书与荣誉') else ''}
 </div>
 <div class="main">
@@ -448,6 +466,14 @@ def _render_education(edu_text: str) -> str:
         return ''
     lines = edu_text.strip().split('\n')
     return ''.join(f'<div class="edu-item">{l.strip("- ")}</div>' for l in lines if l.strip())
+
+
+def _render_courses(course_text: str) -> str:
+    """渲染专业课程为标签（顿号/逗号/分号/换行分隔）"""
+    if not course_text:
+        return ''
+    items = [s.strip(" -·、,，;；\t") for s in re.split(r"[\n、,，;；]+", course_text)]
+    return ''.join(f'<span class="course-tag">{i}</span>' for i in items if i)
 
 
 def _render_certs(cert_text: str) -> str:

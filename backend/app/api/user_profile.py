@@ -74,6 +74,7 @@ def _profile_to_dict(profile: UserProfile) -> dict:
         "education": profile.education,
         "school": profile.school,
         "major": profile.major,
+        "courses": profile.courses,
         "summary": profile.summary,
         "expected_role": profile.expected_role,
         "expected_salary": profile.expected_salary,

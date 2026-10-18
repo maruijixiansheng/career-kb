@@ -290,6 +290,7 @@ class UserProfileResponse(BaseModel):
     education: Optional[str] = None
     school: Optional[str] = None
     major: Optional[str] = None
+    courses: Optional[str] = None
     summary: Optional[str] = None
     expected_role: Optional[str] = None
     expected_salary: Optional[str] = None
@@ -308,6 +309,7 @@ class UserProfileUpdate(BaseModel):
     education: Optional[str] = None
     school: Optional[str] = None
     major: Optional[str] = None
+    courses: Optional[str] = None
     summary: Optional[str] = None
     expected_role: Optional[str] = None
     expected_salary: Optional[str] = None

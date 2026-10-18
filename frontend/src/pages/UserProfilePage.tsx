@@ -52,6 +52,7 @@ export default function UserProfilePage() {
       education: profile?.education || '',
       school: profile?.school || '',
       major: profile?.major || '',
+      courses: profile?.courses || '',
       summary: profile?.summary || '',
       expected_role: profile?.expected_role || '',
       expected_salary: profile?.expected_salary || '',
@@ -181,6 +182,19 @@ export default function UserProfilePage() {
                 <Field icon={<GraduationCap size={16} />} label="最高学历" value={fieldValue('education')} />
                 <Field icon={<Building size={16} />} label="毕业院校" value={fieldValue('school')} />
                 <Field icon={<BookOpen size={16} />} label="专业" value={fieldValue('major')} />
+              </div>
+              <div className="mt-4">
+                <Field
+                  icon={<BookOpen size={16} />}
+                  label="专业课程"
+                  value={
+                    profile?.courses ? (
+                      <span className="text-gray-800 whitespace-pre-wrap">{profile.courses}</span>
+                    ) : (
+                      <span className="text-gray-300">未填写</span>
+                    )
+                  }
+                />
               </div>
             </Section>
 
@@ -370,6 +384,20 @@ export default function UserProfilePage() {
                   onChange={v => updateField('major', v)}
                   placeholder="请输入专业"
                 />
+              </div>
+              <div className="mt-4">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-600 mb-1">
+                  <BookOpen size={16} className="text-gray-400" />
+                  专业课程
+                </label>
+                <textarea
+                  value={form.courses || ''}
+                  onChange={e => updateField('courses', e.target.value)}
+                  rows={2}
+                  placeholder="例如：数据结构、操作系统、计算机网络、机器学习（顿号/逗号/换行分隔，会渲染在简历左侧栏）"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-400 resize-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">会作为独立板块放在简历左侧栏（教育背景下方）</p>
               </div>
             </Section>
 

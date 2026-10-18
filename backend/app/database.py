@@ -37,41 +37,48 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
-    """初始化数据库表 + 自动迁移缺失列"""
+    """初始化数据库表 + 自动追加缺失列"""
     import logging as _logging
-    from sqlalchemy import text, inspect
+    from sqlalchemy import text
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    _migrate_logger = _logging.getLogger("career-kb.migrate")
-    tables_with_user_id = [
-        "resumes", "job_descriptions", "applications", "skill_gap_analyses",
-        "interview_sessions", "skill_library", "user_profile",
-    ]
+        mig_logger = _logging.getLogger("career-kb.migrate")
 
-    for table in tables_with_user_id:
-        try:
+        async def columns_of(table: str) -> list[str]:
             if settings.DATABASE_TYPE == "sqlite":
                 result = await conn.execute(text(f"PRAGMA table_info({table})"))
-                columns = [row[1] for row in result.fetchall()]
-            else:
-                # PostgreSQL: 查询 information_schema
-                result = await conn.execute(
-                    text(
-                        "SELECT column_name FROM information_schema.columns "
-                        "WHERE table_name = :table"
-                    ),
-                    {"table": table},
-                )
-                columns = [row[0] for row in result.fetchall()]
+                return [row[1] for row in result.fetchall()]
+            result = await conn.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = :table"
+                ),
+                {"table": table},
+            )
+            return [row[0] for row in result.fetchall()]
 
-            if "user_id" not in columns:
-                await conn.execute(
-                    text(f"ALTER TABLE {table} ADD COLUMN user_id VARCHAR(36)")
-                )
-                _migrate_logger.info(f"迁移: {table} 表已添加 user_id 列")
-            await conn.commit()
-        except Exception as e:
-            _migrate_logger.warning(f"迁移 {table} 失败: {e}")
-            await conn.rollback()
+        # 需要补列的迁移：表名 -> [(列名, 类型)]
+        tables_with_user_id = [
+            "resumes", "job_descriptions", "applications", "skill_gap_analyses",
+            "interview_sessions", "skill_library", "user_profile",
+        ]
+        migrations: dict[str, list[tuple[str, str]]] = {
+            t: [("user_id", "VARCHAR(36)")] for t in tables_with_user_id
+        }
+        # v2.1 新增：专业课程（渲染在简历左侧栏）
+        migrations["user_profile"].append(("courses", "TEXT"))
+
+        for table, columns in migrations.items():
+            try:
+                existing = await columns_of(table)
+                for name, ddl in columns:
+                    if name not in existing:
+                        await conn.execute(
+                            text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+                        )
+                        mig_logger.info(f"迁移: {table} 表已添加 {name} 列")
+            except Exception as e:
+                mig_logger.warning(f"迁移 {table} 失败: {e}")
+
